@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = TRUE, eval = TRUE, fig.align = "center",
                       tidy.opts=list(width.cutoff=60), 
                       R.options=list(max.print=100))
 
-
+# Load necessary libraries
 library(dplyr)
 library(tidyverse)
 library(knitr)
@@ -32,9 +32,14 @@ library(rpart.plot)
 library(caret)
 library(randomForest)
 library(pROC)
+library(gridExtra)
+library(grid)
+library(ggthemes)
+library(GGally)
+library(ggfortify)
 ```
 
-### Praveen Mogan, ...
+### Praveen Mogan (pm32757), Sashank Meka (sm76742)
 
 # Introduction
 
@@ -152,6 +157,7 @@ optimalThreshold = function(predArr, actualArr, log = FALSE) {
   return (c(accuracyMax, threshold))
 }
 
+# Computes specificity, accuracy, sensitivity, and AUC
 computeParams = function(predArr, actualArr, log = FALSE) {
   res = optimalThreshold(predArr, actualArr, log)
   threshold = res[2]
@@ -176,6 +182,7 @@ computeParams = function(predArr, actualArr, log = FALSE) {
             auc(roccurve)))
 }
 
+# Results of Logistic Regression without test/train split
 computeParams(pred, dataset$price_range)
 ```
 ## With Test/Train Split
@@ -189,6 +196,7 @@ important concern.
 
 
 ```{R}
+# Splits into train and test dataset before computing measures
 performTrainTestLog = function(seed) {
   set.seed(seed)
   train_idx <- createDataPartition(dataset$price_range, p = 0.8)[[1]]
@@ -204,6 +212,7 @@ performTrainTestLog = function(seed) {
   return (computeParams(pred2, dataset_test$price_range))
 }
 
+# Runs logistic regression with test/train split 5 times
 reps = 5
 avgAcc = 0
 avgACU = 0
@@ -218,10 +227,13 @@ for(x in 1:reps) {
   avgACU = avgACU + res[4]
 }
 
+# Generates average of each metric
 avgAcc = avgAcc/reps
 avgSens = avgSens/reps
 avgSpec = avgSpec/reps
 avgACU = avgACU/reps
+
+# Outputs average of each metric
 cat("The average Accuracy is: ", avgAcc, "\n")
 cat("The average Sensitivity is: ", avgSens, "\n")
 cat("The average Specificity is: ", avgSpec, "\n")
@@ -236,17 +248,29 @@ This model performs extremely well because there is no train/test split. There
 is a slight improvement when the random forest algorithm is used, however. The
 CART algorithm has an accuracy of .9595, a sensitivity of .963, a specificity of
 .956, and an AUC of .9595. On the other hand, the random forest was able to get 
-a 1 for each of the parameters. This indicates a high level of overfitting as it
-appears to predict each observation exactly correct.
+a 1 for each of the parameters. This indicates a high level of over fitting as 
+it appears to predict each observation exactly correct.
 
 ```{R}
+# Fits CART to data
 fitted_cart = rpart(price_range ~ ., data = dataset)
+
+# Prints created tree
 rpart.plot(fitted_cart)
+
+# Generates predictions from CART model
 rpartPreds = predict(fitted_cart, dataset)
+
+# Output metrics for CART
 computeParams(rpartPreds, dataset$price_range)
 
+# Fits random forest to data
 phoneRF = randomForest(price_range ~ ., data = dataset)
+
+# Generates predictions from random forest model
 phoneRFPred = predict(phoneRF, dataset)
+
+# Output metrics for random forest
 computeParams(phoneRFPred, dataset$price_range)
 ```
 ## With Test/Train Split
@@ -258,18 +282,23 @@ fitting, it does not seem as big of a concern as before, without test/train
 split. However, the tree-based method does not perform as well as the logistic
 method.
 ```{R}
+# Splits into test/training sets before performing CART classification
 performTrainTestCART = function(seed) {
   set.seed(seed)
+  # Splits data into test/train
   ind <- sample(2, nrow(dataset), replace = TRUE, prob = c(0.8, 0.2))
   dataset_train <- dataset[ind==1,]
   dataset_test <- dataset[ind==2,]
   
+  # Fits and generates predictions from model
   cartFit = rpart(price_range ~ ., data = dataset_train)
   cartPred = predict(cartFit, dataset_test)
   
+  # Outputs model metrics
   return (computeParams(cartPred, dataset_test$price_range))
 }
 
+# Performs train/test CART model 
 avgAccCart = 0
 avgACUCart = 0
 avgSpecCart = 0
@@ -282,10 +311,13 @@ for(x in 1:reps) {
   avgACUCart = avgACUCart + res[4]
 }
 
+# Generates average of each metric
 avgAccCart = avgAccCart/reps
 avgSensCart = avgSensCart/reps
 avgSpecCart = avgSpecCart/reps
 avgACUCart = avgACUCart/reps
+
+# Outputs average of each metric
 cat("The average CART Accuracy is: ", avgAccCart, "\n")
 cat("The average CART Sensitivity is: ", avgSensCart, "\n")
 cat("The average CART Specificity is: ", avgSpecCart, "\n")
@@ -299,18 +331,23 @@ are slightly higher than the CART model, over fitting might be a slight concern
 here. Ultimately, the random forest performs better than the CART model, but 
 slightly worse than the logistic regression model.
 ```{R}
+# Splits into test/training sets before performing Random Forest classification
 performTrainTestForest = function(seed) {
   set.seed(seed)
+  # Splits data into test/train
   ind <- sample(2, nrow(dataset), replace = TRUE, prob = c(0.8, 0.2))
   dataset_train <- dataset[ind==1,]
   dataset_test <- dataset[ind==2,]
   
+  # Fits and generates predictions from model
   forestFit = randomForest(price_range ~ ., data = dataset_train)
   forestPred = predict(forestFit, dataset_test)
   
+  # Outputs model metrics
   return (computeParams(forestPred, dataset_test$price_range))
 }
 
+# Performs train/test Random Forest model 
 avgAccForest = 0
 avgACUForest = 0
 avgSpecForest = 0
@@ -323,10 +360,13 @@ for(x in 1:reps) {
   avgACUForest = avgACUForest + res[4]
 }
 
+# Generates average of each metric
 avgAccForest = avgAccForest/reps
 avgSensForest = avgSensForest/reps
 avgSpecForest = avgSpecForest/reps
 avgACUForest = avgACUForest/reps
+
+# Outputs average of each metric
 cat("The average Forest Accuracy is: ", avgAccForest, "\n")
 cat("The average Forest Sensitivity is: ", avgSensForest, "\n")
 cat("The average Forest Specificity is: ", avgSpecForest, "\n")
@@ -347,13 +387,16 @@ being classified as being expensive between 0 and 1.
 
 
 ```{R}
+# Generates model with different cp parameters
 possible_cps <- data.frame(cp = seq(from = 0.001, to = 0.1, length = 100))
 train_control = train(price_range ~ ., data = dataset, method = "rpart", 
                       tuneGrid = possible_cps)
 
+# Finds optimal cp
 ggplot(train_control, highlight = TRUE)
 train_control
 
+# Display optimal classification tree
 tuned_rpart = train_control$finalModel
 rpart.plot(tuned_rpart)
 ```
@@ -363,16 +406,21 @@ rpart.plot(tuned_rpart)
 ## Linear Regression Without K-Fold Cross Validation
 ```{R}
 set.seed(123)
+# Generate linear model to determine clock speed
 phoneLM = lm(clock_speed ~ . , data = dataset)
+
+# Use model to predict clock speed
 fitted_values = predict(phoneLM, dataset)
 rmse <- function(x,y) sqrt(mean((x-y)^2))
 
+# Outputs RMSE for linear model
 cat("RMSE: ", rmse(dataset$clock_speed, fitted_values), "\n")
 ```
 
 ## Linear Regression With K-Fold Cross Validation
 ```{R}
 set.seed(123)
+# Creates linear model with 20 fold cross validation
 trainControlKLM <- trainControl(method = "cv",
                               number = 20)
 
@@ -380,21 +428,30 @@ modelKLM <- train(clock_speed ~ ., data = dataset,
                method = "lm",
                trControl = trainControlKLM)
 
+# Use model to predict clock speed
 predKLM = predict(modelKLM, dataset)
+
+# Outputs RMSE for linear model
 cat("RMSE: ", rmse(dataset$clock_speed, predKLM), "\n")
 ```
 
 ## Random Forest Without K-Fold Cross Validation
 ```{R}
 set.seed(123)
+# Creates model with random forest without cross validation
 modelRF = randomForest(clock_speed ~ ., data = dataset)
+
+# Use model to predict clock speed
 predRF = predict(modelRF, dataset)
+
+# Outputs RMSE for random forest model
 cat("RMSE: ", rmse(dataset$clock_speed, predRF), "\n")
 ```
 
 ## Random Forest With K-Fold Cross Validation
 ```{R}
 set.seed(123)
+# Creates model with random forest with 20-fold cross validation
 trainControlRF2 <- trainControl(method = "oob",
                               number = 20)
 
@@ -402,7 +459,10 @@ modelRF2 <- train(clock_speed ~ ., data = dataset,
                method = "rf",
                trControl = trainControlRF2)
 
+# Use model to predict clock speed
 predRF2 = predict(modelRF2, dataset)
+
+# Outputs RMSE for random forest model
 cat("RMSE: ", rmse(dataset$clock_speed, predRF2), "\n")
 ```
 
@@ -416,8 +476,39 @@ cross validation.
 
 # Unsupervised Learning
 
-Cluster analysis or PCA code and discussion of results goes here.
+## PCA Analysis
+We decided to use battery power, internal memory, number of cores, and amount of
+RAM in MB as the input to PCA. It seems as though each variable had some
+influence in PC1 and PC2. For instance, increasing the number of cores appears
+to increase PC1, while the rest of the variables appear to have an opposite 
+effect. With PC2, an increase in int_memory, ram, and n_cores appears to 
+increase PC2. However, it has the opposite effect on battery_power.
 
-# Concluding Remarks
+Each PC is roughly equal in terms of explaining the variance, with PC1 
+explaining 26.11% and PC2 explaining 25.62% of the variance (similar percentage 
+to PC3 and PC4). Therefore, it would be most accurate to include all 4 PC in the
+analysis, as each one had an equal effect according to the list of cumulative 
+sum of the percentages.
+```{R}
+# Compute PCA
+pca = dataset %>% 
+  dplyr::select(battery_power, int_memory, n_cores, ram) %>%
+  scale() %>%
+  prcomp()
 
-Any concluding remarks tying your analysis together go here.
+# Display PCA results
+pca
+
+# Plot the influence of different variables on PC
+autoplot(pca, data = dataset, colour = 'price_range', loadings.label = TRUE, 
+         loadings = TRUE)
+
+# Display how cumulative PCs can explain variance
+percent = pca$sdev^2 / sum(pca$sdev^2)
+cumsum(percent)
+```
+
+# Acknowledgments
+Praveen worked on the logistic regression and random forest.
+
+Sashank worked on the linear regression and PCA.
