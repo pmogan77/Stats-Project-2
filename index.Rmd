@@ -362,6 +362,7 @@ rpart.plot(tuned_rpart)
 
 ## Linear Regression Without K-Fold Cross Validation
 ```{R}
+set.seed(123)
 phoneLM = lm(clock_speed ~ . , data = dataset)
 fitted_values = predict(phoneLM, dataset)
 rmse <- function(x,y) sqrt(mean((x-y)^2))
@@ -371,6 +372,7 @@ cat("RMSE: ", rmse(dataset$clock_speed, fitted_values), "\n")
 
 ## Linear Regression With K-Fold Cross Validation
 ```{R}
+set.seed(123)
 trainControlKLM <- trainControl(method = "cv",
                               number = 20)
 
@@ -384,13 +386,15 @@ cat("RMSE: ", rmse(dataset$clock_speed, predKLM), "\n")
 
 ## Random Forest Without K-Fold Cross Validation
 ```{R}
+set.seed(123)
 modelRF = randomForest(clock_speed ~ ., data = dataset)
-predRF = predict(modelRF, dataset_test)
+predRF = predict(modelRF, dataset)
 cat("RMSE: ", rmse(dataset$clock_speed, predRF), "\n")
 ```
 
 ## Random Forest With K-Fold Cross Validation
 ```{R}
+set.seed(123)
 trainControlRF2 <- trainControl(method = "oob",
                               number = 20)
 
@@ -404,10 +408,10 @@ cat("RMSE: ", rmse(dataset$clock_speed, predRF2), "\n")
 
 ## Analysis
 While the k-fold linear regression and normal linear regression both had an RMSE
-of .813353, the random forest without cross validation had a RMSE of .9537417. 
-With cross validation, the random forest had a RMSE of .4144706. This means that
-the random forest with cross validation generated more accurate predictions than
-linear regression, regardless of cross validation, and random forest without 
+of .813353, the random forest without cross validation had a RMSE of .3515978. 
+With cross validation, the random forest had a RMSE of .4174263. This means that
+the random forest without cross validation generated more accurate predictions 
+than linear regression, regardless of cross validation, and random forest with 
 cross validation.
 
 # Unsupervised Learning
