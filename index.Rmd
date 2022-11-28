@@ -1,0 +1,419 @@
+---
+title: 'A Data-Driven Analysis of Phone Prices'
+author: "SDS322E"
+date: '11/24/2022'
+output:
+  pdf_document:
+    toc: no
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, fig.align = "center", 
+                      warning = F, message = F, tidy=TRUE, 
+                      tidy.opts=list(width.cutoff=60), 
+                      R.options=list(max.print=100))
+
+
+library(dplyr)
+library(tidyverse)
+library(knitr)
+library(readr)
+library(rvest)
+library(tidytext)
+library(lubridate)
+library(ggplot2)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(randomForest)
+library(pROC)
+```
+
+### Praveen Mogan, ...
+
+# Introduction
+
+## Dataset decsription
+
+This dataset includes specs about different phones and whether the price is 
+expensive or not. While the original price range variable had 4 possible 
+options, this has been dichotomized in this project. This dataset was found on 
+[Github](https://raw.githubusercontent.com/amankharwal/Website-data/master/mobile_prices.csv).
+
+The dataset has 2000 observations, with 1000 cheap phones and 1000 expensive 
+phones.
+
+## Variables
+
+**Battery Power** refers to the energy a battery can store at one time in mAh.
+
+**Blue** refers to whether the phone has Bluetooth.
+
+**Clock speed** refers to the speed of the microprocessor while executing 
+instructions.
+
+**Dual Sim** refers to whether the phone has dual sim support.
+
+**FC** refers to the megapixels of the front camera.
+
+**Four g** refers to whether the phone has 4G support or not.
+
+**Int memory** refers to the internal memory size in GB.
+
+**M dep** refers to the depth in cm.
+
+**Mobile wt** refers to the weight of the phone in grams.
+
+**N cores** refers to the number of cores of processor.
+
+**PC** refers to the number of megapixels in the primary camera.
+
+**PX height** is the pixel resolution height.
+
+**PX width** is the pixel resolution width.
+
+**RAM** is the number of MB of RAM.
+
+**SC h** refers to the screen height of the phone in cm.
+
+**SC w** refers to the screen width of the phone in cm.
+
+**Talk time** refers to the longest time that a single battery charge will last 
+in hours.
+
+**Three** **g** refers to whether the phone has 3G support or not.
+
+**Touch screen** refers to whether the phone has a touch screen.
+
+**Wifi** refers to whether the phone has wifi or not.
+
+**Price range** refers to whether the phone is expensive or not.
+
+## Why these datasets?
+
+This dataset provides a view of the current phone market as well as the 
+potential charcteristics that could be most influential in determining the price
+of a phone. Consequently, we hope to find the relationship between different 
+components and how significantly they influence whether a phone is expensive or
+not.
+
+```{R}
+# Read dataset
+dataset <- read.csv("./data.csv", header = TRUE, sep = ",")
+
+# Dichotomize price range variable
+dataset = dataset %>% mutate(price_range = ifelse(price_range >= 2, 1, 0))
+
+# Display dataset structure
+str(dataset)
+
+# Find number of observations for cheap and expensive phones
+nrow(dataset %>% filter(price_range == 0))
+```
+
+# Logistic Regression
+
+## Without Test/Train Split
+This model performs extremely well because there is no train/test split. This is 
+evidenced by the accuracy of .996, .995 sensitivity, .998 specificity, and .996 
+AUC, all indiciative of near perfect categorization. However, this is to be 
+expected as the model is most likely overfit to the data provided.
+
+
+```{R}
+# Fit to logistic regression
+log_fit = glm(price_range ~ ., family = binomial, data = dataset)
+
+# Predict using logistic regression
+pred = predict(log_fit, dataset, type = 'response')
+
+optimalThreshold = function(predArr, actualArr, log = FALSE) {
+  # Determine the threshold for maximum accuracy
+  accuracyMax = 0
+  threshold = 0
+  for(x in 1:1000) {
+    temp = mean(ifelse(predArr > x/1000, 1, 0) == actualArr)
+    if(temp > accuracyMax) {
+      accuracyMax = temp
+      threshold = x/1000
+    }
+  }
+  
+  # Print accuracy and threshold used to achieve
+  if (log) {
+    cat("Accuracy is: ", accuracyMax, "\n")
+  }
+  
+  return (c(accuracyMax, threshold))
+}
+
+computeParams = function(predArr, actualArr, log = FALSE) {
+  res = optimalThreshold(predArr, actualArr, log)
+  threshold = res[2]
+  accuracy = res[1]
+  
+  # Compute specificity and sensitivity from confusion matrix
+  pred_values = ifelse(predArr > threshold, 1, 0)
+  conf_matrix = table(pred_values, actualArr)
+  
+  # Compute AUC from ROC curve
+  roccurve = roc(actualArr, pred_values)
+  plot(roccurve)
+  
+  # Prints info if requested
+  if(log) {
+    cat("Threshold is: ", threshold, "\n")
+    cat("Sensitivity is: ", sensitivity(conf_matrix), "\n")
+    cat("Specificity is: ", specificity(conf_matrix), "\n")
+    cat("AUC is: ", auc(roccurve), "\n")
+  }
+  return (c(accuracy, sensitivity(conf_matrix), specificity(conf_matrix), 
+            auc(roccurve)))
+}
+
+computeParams(pred, dataset$price_range)
+```
+## With Test/Train Split
+Interestingly, dividing the model into training and testing datasets still leads
+to very high specificity (.988), sensitivity (.997), AUC (.9925), and accuracy 
+(.9925) scores. In other words, this algorithm is just shy of every metric 
+without splitting. However, this could once again be indicative of overfitting,
+as the testing dataset is comprised of 80%, or the vast majority, of the data. 
+If the remaining 20% is very similar to the 80%, overfitting could become an 
+important concern.
+
+
+```{R}
+performTrainTestLog = function(seed) {
+  set.seed(seed)
+  train_idx <- createDataPartition(dataset$price_range, p = 0.8)[[1]]
+  dataset_train <- dataset[train_idx, ]
+  dataset_test <- dataset[-train_idx,]
+  
+  # Fit to logistic regression
+  log_fit2 = glm(price_range ~ ., family = binomial, data = dataset_train)
+  
+  # Predict using logistic regression
+  pred2 = predict(log_fit2, dataset_test, type = 'response')
+  
+  return (computeParams(pred2, dataset_test$price_range))
+}
+
+reps = 5
+avgAcc = 0
+avgACU = 0
+avgSpec = 0
+avgSens = 0
+seeds = c(88, 123123123, 135454535, 876867234, 829340813)
+for(x in 1:reps) {
+  res = performTrainTestLog(seeds[x])
+  avgAcc = avgAcc + res[1]
+  avgSens = avgSens + res[2]
+  avgSpec = avgSpec + res[3]
+  avgACU = avgACU + res[4]
+}
+
+avgAcc = avgAcc/reps
+avgSens = avgSens/reps
+avgSpec = avgSpec/reps
+avgACU = avgACU/reps
+cat("The average Accuracy is: ", avgAcc, "\n")
+cat("The average Sensitivity is: ", avgSens, "\n")
+cat("The average Specificity is: ", avgSpec, "\n")
+cat("The average ACU is: ", avgACU, "\n")
+```
+
+
+# Tree-based Classifiers
+
+## Without Test/Train Split
+This model performs extremely well because there is no train/test split. There 
+is a slight improvement when the random forest algorithm is used, however. The
+CART algorithm has an accuracy of .9595, a sensitivity of .963, a specificity of
+.956, and an AUC of .9595. On the other hand, the random forest was able to get 
+a 1 for each of the parameters. This indicates a high level of overfitting as it
+appears to predict each observation exactly correct.
+
+```{R}
+fitted_cart = rpart(price_range ~ ., data = dataset)
+rpart.plot(fitted_cart)
+rpartPreds = predict(fitted_cart, dataset)
+computeParams(rpartPreds, dataset$price_range)
+
+phoneRF = randomForest(price_range ~ ., data = dataset)
+phoneRFPred = predict(phoneRF, dataset)
+computeParams(phoneRFPred, dataset$price_range)
+```
+## With Test/Train Split
+
+### CART
+The CART model is doing reasonably well, with a accuracy of .945, sensitivity of
+.95, specificity of .94, and an ACU of .945. While there might be slight over 
+fitting, it does not seem as big of a concern as before, without test/train 
+split. However, the tree-based method does not perform as well as the logistic
+method.
+```{R}
+performTrainTestCART = function(seed) {
+  set.seed(seed)
+  ind <- sample(2, nrow(dataset), replace = TRUE, prob = c(0.8, 0.2))
+  dataset_train <- dataset[ind==1,]
+  dataset_test <- dataset[ind==2,]
+  
+  cartFit = rpart(price_range ~ ., data = dataset_train)
+  cartPred = predict(cartFit, dataset_test)
+  
+  return (computeParams(cartPred, dataset_test$price_range))
+}
+
+avgAccCart = 0
+avgACUCart = 0
+avgSpecCart = 0
+avgSensCart = 0
+for(x in 1:reps) {
+  res = performTrainTestCART(seeds[x])
+  avgAccCart = avgAccCart + res[1]
+  avgSensCart = avgSensCart + res[2]
+  avgSpecCart = avgSpecCart + res[3]
+  avgACUCart = avgACUCart + res[4]
+}
+
+avgAccCart = avgAccCart/reps
+avgSensCart = avgSensCart/reps
+avgSpecCart = avgSpecCart/reps
+avgACUCart = avgACUCart/reps
+cat("The average CART Accuracy is: ", avgAccCart, "\n")
+cat("The average CART Sensitivity is: ", avgSensCart, "\n")
+cat("The average CART Specificity is: ", avgSpecCart, "\n")
+cat("The average CART ACU is: ", avgACUCart, "\n")
+```
+
+### Random Forest
+The Random forest model performs reasonably well, with an accuracy of .97, a 
+sensitivity of .973, a specificity of .968, and an ACU of .97. As these results 
+are slightly higher than the CART model, over fitting might be a slight concern 
+here. Ultimately, the random forest performs better than the CART model, but 
+slightly worse than the logistic regression model.
+```{R}
+performTrainTestForest = function(seed) {
+  set.seed(seed)
+  ind <- sample(2, nrow(dataset), replace = TRUE, prob = c(0.8, 0.2))
+  dataset_train <- dataset[ind==1,]
+  dataset_test <- dataset[ind==2,]
+  
+  forestFit = randomForest(price_range ~ ., data = dataset_train)
+  forestPred = predict(forestFit, dataset_test)
+  
+  return (computeParams(forestPred, dataset_test$price_range))
+}
+
+avgAccForest = 0
+avgACUForest = 0
+avgSpecForest = 0
+avgSensForest = 0
+for(x in 1:reps) {
+  res = performTrainTestForest(seeds[x])
+  avgAccForest = avgAccForest + res[1]
+  avgSensForest = avgSensForest + res[2]
+  avgSpecForest = avgSpecForest + res[3]
+  avgACUForest = avgACUForest + res[4]
+}
+
+avgAccForest = avgAccForest/reps
+avgSensForest = avgSensForest/reps
+avgSpecForest = avgSpecForest/reps
+avgACUForest = avgACUForest/reps
+cat("The average Forest Accuracy is: ", avgAccForest, "\n")
+cat("The average Forest Sensitivity is: ", avgSensForest, "\n")
+cat("The average Forest Specificity is: ", avgSpecForest, "\n")
+cat("The average Forest ACU is: ", avgACUForest, "\n")
+```
+
+## CP analysis
+The cp with the lowest RMSE appears to be .001. Given the cp options, an optimal
+decision tree was generated. This tree first splits based on whether the phone 
+has a RAM greater than 2236 MB. If it is, the phone goes to the right. From 
+there, the phone is further separated by RAM. Afterwards, Battery power is 
+considered. In the case that battery power is below 570 mAh, ram is once again 
+considered. However, if the RAM is below 2653, battery power, pixel width, and 
+pixel height are then considered. On the left of the root node, similar 
+distinctions are made based on ram first, then battery power, then px_height, 
+then m_depth in one subtree. The ultimate result is a percent change of a phone 
+being classified as being expensive between 0 and 1.
+
+
+```{R}
+possible_cps <- data.frame(cp = seq(from = 0.001, to = 0.1, length = 100))
+train_control = train(price_range ~ ., data = dataset, method = "rpart", 
+                      tuneGrid = possible_cps)
+
+ggplot(train_control, highlight = TRUE)
+train_control
+
+tuned_rpart = train_control$finalModel
+rpart.plot(tuned_rpart)
+```
+
+# Regression/Numeric Prediction
+
+## Linear Regression Without K-Fold Cross Validation
+```{R}
+phoneLM = lm(clock_speed ~ . , data = dataset)
+fitted_values = predict(phoneLM, dataset)
+rmse <- function(x,y) sqrt(mean((x-y)^2))
+
+cat("RMSE: ", rmse(dataset$clock_speed, fitted_values), "\n")
+```
+
+## Linear Regression With K-Fold Cross Validation
+```{R}
+trainControlKLM <- trainControl(method = "cv",
+                              number = 20)
+
+modelKLM <- train(clock_speed ~ ., data = dataset, 
+               method = "lm",
+               trControl = trainControlKLM)
+
+predKLM = predict(modelKLM, dataset)
+cat("RMSE: ", rmse(dataset$clock_speed, predKLM), "\n")
+```
+
+## Random Forest Without K-Fold Cross Validation
+```{R}
+modelRF = randomForest(clock_speed ~ ., data = dataset)
+predRF = predict(modelRF, dataset_test)
+cat("RMSE: ", rmse(dataset$clock_speed, predRF), "\n")
+```
+
+## Random Forest With K-Fold Cross Validation
+```{R}
+trainControlRF2 <- trainControl(method = "oob",
+                              number = 20)
+
+modelRF2 <- train(clock_speed ~ ., data = dataset, 
+               method = "rf",
+               trControl = trainControlRF2)
+
+predRF2 = predict(modelRF2, dataset)
+cat("RMSE: ", rmse(dataset$clock_speed, predRF2), "\n")
+```
+
+## Analysis
+While the k-fold linear regression and normal linear regression both had an RMSE
+of .813353, the random forest without cross validation had a RMSE of .9537417. 
+With cross validation, the random forest had a RMSE of .4144706. This means that
+the random forest with cross validation generated more accurate predictions than
+linear regression, regardless of cross validation, and random forest without 
+cross validation.
+
+# Unsupervised Learning
+
+Cluster analysis or PCA code and discussion of results goes here.
+
+# Concluding Remarks
+
+Any concluding remarks tying your analysis together go here.
